@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026公司年会抽奖 - 极客盲盒墙</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; overflow-x: hidden; }
+        .container { background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); padding: 40px; max-width: 600px; width: 100%; position: relative; z-index: 10; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 32px; color: #333; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header p { color: #666; font-size: 14px; }
+        .setup-area textarea { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; min-height: 120px; margin-bottom: 20px; transition: border-color 0.3s; }
+        .setup-area textarea:focus { outline: none; border-color: #667eea; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .lottery-area { display: none; text-align: center; }
+        .lottery-area.active { display: block; }
+        .wheel { width: 200px; height: 200px; margin: 20px auto; border-radius: 50%; background: #f0f4ff; display: flex; align-items: center; justify-content: center; font-size: 80px; animation: bounce 1s infinite; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        .result-box { background: #fff5f5; border: 2px dashed #e63946; border-radius: 12px; padding: 20px; margin: 20px 0; display: none; animation: slideIn 0.5s ease-out; }
+        .result-box.show { display: block; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .result-name { font-size: 28px; font-weight: bold; color: #e63946; margin-bottom: 10px; }
+        .result-prize { font-size: 18px; color: #333; margin-bottom: 10px; }
+        .result-award-type { display: inline-block; background: #e63946; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; }
+        .history { margin-top: 30px; text-align: left; border-top: 1px solid #eee; padding-top: 20px; max-height: 150px; overflow-y: auto; }
+        .history-item { font-size: 14px; color: #666; margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .confetti { position: fixed; width: 10px; height: 10px; pointer-events: none; z-index: 100; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 年会抽奖</h1>
+            <p>代码决定命运 - 精彩层层递进</p>
+        </div>
+        
+        <div class="setup-area" id="setupArea">
+            <p style="margin-bottom:10px; font-weight:600;">输入7位员工名单（每行一个）：</p>
+            <textarea id="namesInput" placeholder="张三&#10;李四&#10;王五&#10;赵六&#10;孙七&#10;周八&#10;吴九"></textarea>
+            <button onclick="startLottery()">进入抽奖环节</button>
+        </div>
+        
+        <div class="lottery-area" id="lotteryArea">
+            <h2 id="currentAwardTitle" style="color: #667eea; margin-bottom: 10px;">准备抽取：三等奖</h2>
+            <div class="wheel">🎁</div>
+            <button id="drawBtn" onclick="drawLottery()">点击抽取</button>
+            
+            <div class="result-box" id="resultBox">
+                <div class="result-name" id="resultName"></div>
+                <div class="result-prize" id="resultPrize"></div>
+                <span class="result-award-type" id="resultAward"></span>
+            </div>
+            
+            <div class="history" id="history">
+                <strong>抽奖记录：</strong>
+                <div id="historyList" style="margin-top:10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 奖项配置：倒序排列，先抽三等奖
+        const AWARDS = [
+            { name: '三等奖', prize: '京东E卡 + 科技好物', count: 3 },
+            { name: '二等奖', prize: '摩飞多功能锅 或 扫地机器人', count: 2 },
+            { name: '一等奖', prize: '任天堂 Switch 或 索尼降噪耳机', count: 1 },
+            { name: '特等奖', prize: '大疆 Pocket 3 或 iPad mini 6', count: 1 }
+        ];
+
+        let participants = [];
+        let awardQueue = []; // 展开后的奖项序列
+        let currentIndex = 0;
+        let isDrawing = false;
+
+        // 初始化奖项序列
+        AWARDS.forEach(a => {
+            for(let i=0; i<a.count; i++) {
+                awardQueue.push(a);
+            }
+        });
+
+        function startLottery() {
+            const input = document.getElementById('namesInput').value.trim();
+            participants = input.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+            
+            if (participants.length !== 7) {
+                alert('请输入正好7个名字哦！');
+                return;
+            }
+            
+            // 随机打乱名单
+            participants = participants.sort(() => Math.random() - 0.5);
+            
+            document.getElementById('setupArea').style.display = 'none';
+            document.getElementById('lotteryArea').classList.add('active');
+            updateTitle();
+        }
+
+        function updateTitle() {
+            if (currentIndex < awardQueue.length) {
+                document.getElementById('currentAwardTitle').innerText = "正在抽取：" + awardQueue[currentIndex].name;
+            } else {
+                document.getElementById('currentAwardTitle').innerText = "抽奖圆满结束！";
+                document.getElementById('drawBtn').style.display = 'none';
+            }
+        }
+
+        function drawLottery() {
+            if (isDrawing || currentIndex >= awardQueue.length) return;
+            
+            isDrawing = true;
+            document.getElementById('drawBtn').disabled = true;
+            document.getElementById('resultBox').classList.remove('show');
+            
+            // 模拟抽奖动画
+            setTimeout(() => {
+                const name = participants[currentIndex];
+                const award = awardQueue[currentIndex];
+                
+                document.getElementById('resultName').innerText = "恭喜 " + name;
+                document.getElementById('resultPrize').innerText = award.prize;
+                document.getElementById('resultAward').innerText = award.name;
+                document.getElementById('resultBox').classList.add('show');
+                
+                // 添加到历史记录
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                historyItem.innerHTML = `<span>${name}</span><span>${award.name}</span>`;
+                document.getElementById('historyList').prepend(historyItem);
+                
+                createConfetti(); // 放烟花
+                
+                currentIndex++;
+                updateTitle();
+                isDrawing = false;
+                document.getElementById('drawBtn').disabled = false;
+                if(currentIndex === awardQueue.length) {
+                    document.getElementById('drawBtn').innerText = "抽奖结束";
+                }
+            }, 1000);
+        }
+
+        function createConfetti() {
+            const colors = ['#ff0000', '#ffd700', '#ffffff', '#00ff00', '#0000ff'];
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.top = Math.random() * 100 + 'vh';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.width = Math.random() * 10 + 5 + 'px';
+                confetti.style.height = confetti.style.width;
+                confetti.style.borderRadius = '50%';
+                document.body.appendChild(confetti);
+                
+                // 简单的消失动画
+                setTimeout(() => confetti.remove(), 2000);
+            }
+        }
+    </script>
+</body>
+</html>
